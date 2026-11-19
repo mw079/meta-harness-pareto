@@ -1,0 +1,87 @@
+# Pareto meta harness configuration. One file = one experiment setup.
+
+harness_model:            # the ONLY model harnesses may call
+  model: gpt-6-luna
+  reasoning_effort: medium            # locked; harnesses cannot change it
+  max_completion_tokens: 16000        # includes hidden reasoning tokens
+  max_concurrency: 16                 # concurrent API calls per evaluation process
+  request_timeout_s: 300
+  max_prompt_chars: 200000
+  # USD per 1M tokens. Taken from third-party trackers (Nov 2026) -- verify at
+  # https://developers.openai.com/api/docs/pricing before reporting final numbers.
+  price_per_million:
+    input: 0.10
+    cached_input: 0.01
+    output: 0.50                      # reasoning tokens are billed as output
+
+proposer:                 # coding agent used by the meta harness workers
+  model: claude-sonnet-5-5
+  effort: medium
+  timeout_s: 2400
+  tools: [Read, Glob, Grep, Edit, Write, Bash]
+  review: true                        # independent reviewer pass on every candidate
+  review_effort: low
+  review_timeout_s: 600
+  multi_candidate_timeout_s: 3600     # sessions that write 3 candidates (stanford, pareto 1-agent)
+
+datasets:
+  search: [USPTO, Symptom2Disease, LawBench]   # used during search (train + val only)
+  unseen: [FiNER, AEGIS]                       # never shown during search; final report only
+  shuffle_seed: 42
+  sizes:
+    USPTO:           {train: 50,  val: 30,  test: 100}
+    Symptom2Disease: {train: 200, val: 50,  test: 212}
+    LawBench:        {train: 200, val: 50,  test: 100}
+    FiNER:           {train: 200, val: 100, test: 100}
+    AEGIS:           {train: 400, val: 128, test: 140}
+
+evaluation:
+  learn_batch_size: 1                 # same as Stanford's offline mode
+  eval_threads: 8                     # parallel predict() calls per dataset
+  eval_timeout_s: 5400                # per candidate, all datasets
+  max_learn_usd_per_dataset: 1.00     # harness is killed if learning spends more
+  max_predict_usd_per_dataset: 2.00   # harness is killed if prediction spends more
+  max_error_rate: 0.20                # more predict() exceptions than this = crashed
+  dev_fraction: 0.25                  # train -> 75% learn + 25% dev (dev traces are shown to agents)
+  smoke: {train: 6, eval: 3}          # quick real-model run (dev split) before the full eval
+
+search:
+  acc_eps: 0.02                       # accuracy noise margin (2 points)
+  cost_eps: 0.10                      # a point >=10% cheaper beats one within acc_eps of its accuracy
+  max_candidates: 30                  # stop after this many proposed candidates (3 per round)
+  budget_usd: 30.0                    # $ cap per run: harness model + agents
+  baselines: [no_memory, fewshot_10, fewshot_all]
+
+harness_rules:
+  max_lines: 500
+  allowed_imports: [
+    harness_base, json, re, math, random, hashlib, collections, itertools,
+    functools, typing, dataclasses, string, heapq, bisect, statistics,
+    textwrap, difflib, threading, concurrent, concurrent.futures, enum, abc,
+    copy, unicodedata, operator, __future__,
+  ]
+  # Regexes that must not appear in harness code (all search AND unseen datasets, incl. folder
+  # names). (?i) = case-insensitive. Checked by the orchestrator only: agents' self-check gets
+  # max_lines + allowed_imports, so the unseen dataset names are never shown to them.
+  dataset_patterns:
+    - '(?i)uspto'
+    - '(?i)symptom2disease'
+    - '(?i)lawbench'
+    - '(?i)crime_prediction'
+    - '\bFiNER\b'
+    - '(?i)\baegis'
+
+isolation:
+  # Agents' tool calls are scanned for these regexes (third layer after deny rules + sandbox).
+  audit_patterns:
+    - 'third_party'
+    - 'test\.jsonl'
+    - 'val\.jsonl'
+    - 'valid\.jsonl'
+    - '(?i)/finer'
+    - 'FiNER'
+    - '(?i)aegis'
+    - '/final/'
+    - '\.cache/llm'
+    - 'hidden/'
+    - '\.env(?![A-Za-z0-9_])'     # the .env FILE, not os.environ

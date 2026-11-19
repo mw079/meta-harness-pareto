@@ -1,0 +1,33 @@
+[project]
+name = "meta-harness-pareto"
+version = "0.1.0"
+description = "Pareto Queue: a meta harness that searches for an accuracy-vs-cost Pareto frontier of LLM harnesses, compared with Stanford Meta-Harness."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "datasets",           # required by the vendored Stanford data loaders
+    "matplotlib>=3.11.2", # comparison plot
+    "openai>=1.60",       # harness model client
+    "pyyaml",
+    "tenacity>=8",
+]
+
+[dependency-groups]
+dev = ["ruff", "vulture"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["third_party", "runs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]
+
+[tool.vulture]
+paths = ["pareto", "tests"]
+exclude = ["pareto/baselines/", "pareto/workspace_template/"]
+min_confidence = 61
